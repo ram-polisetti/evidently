@@ -90,3 +90,35 @@ def test_explicit_strict_false_matches_default():
     definition = DataDefinition(numerical_columns=["feat"], categorical_columns=["target"])
     ds = PandasDataset(cur, data_definition=definition, strict=False)
     assert ds.data_definition.timestamp == "execution_timestamp"
+
+
+def test_strict_unlisted_columns_stay_in_data():
+    # Strict mode ignores unlisted columns in the mapping, but must not drop
+    # them from the underlying data (the issue's expectation is "ignored in
+    # tests/metrics", not deleted).
+    _, cur = _make_frames()
+    definition = DataDefinition(numerical_columns=["feat"], categorical_columns=["target"])
+
+    ds = PandasDataset(cur, data_definition=definition, strict=True)
+
+    assert list(ds.as_dataframe().columns) == ["feat", "target", "execution_timestamp"]
+    assert ds.data_definition.get_column_type("execution_timestamp") == ColumnType.Unknown
+
+
+def test_strict_respects_explicit_service_columns_verbatim():
+    # "Used exactly as-is" covers service columns too: an explicit timestamp
+    # survives the deep copy untouched by auto-detection.
+    _, cur = _make_frames()
+    definition = DataDefinition(
+        numerical_columns=["feat"],
+        categorical_columns=["target"],
+        timestamp="execution_timestamp",
+    )
+    snapshot = copy.deepcopy(definition)
+
+    ds = PandasDataset(cur, data_definition=definition, strict=True)
+
+    assert definition == snapshot  # caller's object untouched
+    assert ds.data_definition == snapshot
+    assert ds.data_definition.timestamp == "execution_timestamp"
+    assert ds.data_definition.datetime_columns is None
